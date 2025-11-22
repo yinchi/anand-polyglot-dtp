@@ -96,8 +96,9 @@ services:
   portal:
     image: nginx:alpine
     volumes:
-      - ./ui/portal:/usr/share/nginx/html:ro
-    ports: ["${PORTAL_HOST_PORT:-8080}:80"]
+      - ./ui/portal/html:/usr/share/nginx/html:ro
+    ports:
+      - "${PORTAL_HOST_PORT:-8080}:80"
     restart: unless-stopped
 
   django:

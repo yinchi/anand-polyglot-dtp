@@ -269,21 +269,10 @@ sequenceDiagram
 
 ## Run locally
 
-### Option A: Windows (Docker Compose, no Make)
-1. Copy env: `copy .env.example .env`
-2. Start services: `docker compose up -d`
-3. Wait for health checks: `docker compose ps`
-4. Run tests in network:
-   `docker compose run --rm runner bash -lc "pip install -r requirements.txt && python test_all.py"`
-5. Ports:
-   - MinIO S3: http://localhost:9100 (console http://localhost:9101)
-   - Neo4j Browser: http://localhost:7474 (user `neo4j`, pass from `.env`)
-   - InfluxDB: http://localhost:8086 (org/bucket/token from `.env`)
-- Portal (static links): http://localhost:8080
-- React Portal (registry-driven): http://localhost:8083 (API proxied to Django)
-- Lift Twin UI (local to lift stack): http://localhost:3001
+For Windows, use WSL &mdash; you should already have it if you've installed Docker Desktop.  If not, follow the [Docker instructions for using WSL](https://docs.docker.com/desktop/features/wsl/).
 
-### Option B: Linux/Mac (Makefile helper)
+**Note**: in general you will end up with two WSL virtual machines, one for general use and one used by Docker Desktop.
+
 1. `cp .env.example .env`
 2. `make up` (starts containers + creates venv)
 3. `make test` (writes to each store and prints a summary)
