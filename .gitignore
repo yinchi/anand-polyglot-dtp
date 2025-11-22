@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 .env
 .venv/
 __pycache__/
@@ -8,4 +7,3 @@ __pycache__/
 .sqlitedb
 .example
 kube-env
-EOF
