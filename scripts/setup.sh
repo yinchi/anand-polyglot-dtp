@@ -104,4 +104,11 @@ sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_a
 echo "✅  yq installation completed."
 echo ""
 
+echo "🔨  Installing ctop..."
+sudo wget -q https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64 \
+    -O /usr/local/bin/ctop \
+    && sudo chmod +x /usr/local/bin/ctop
+echo "✅  ctop installation completed."
+echo ""
+
 echo "✅  Setup completed successfully!  Please log out and log back in for changes to take effect."
