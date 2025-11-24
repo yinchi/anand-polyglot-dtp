@@ -1,35 +1,70 @@
 services:
-  db:
+
+  # PostgreSQL with TimescaleDB extension
+  postgres:
+    container_name: postgres
     image: timescale/timescaledb:latest-pg16
     environment:
       POSTGRES_USER: ${PGUSER}
       POSTGRES_PASSWORD: ${PGPASSWORD}
       POSTGRES_DB: ${PGDATABASE}
-    ports: ["5432:5432"]
+    ports:
+      - "5432:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
       - ./data-storage/sql:/docker-entrypoint-initdb.d
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL","pg_isready -U ${PGUSER} -d ${PGDATABASE}"]
-      interval: 5s
+      test:
+        - "CMD"
+        - "pg_isready"
+        - "-U"
+        - "${PGUSER}"
+        - "-d"
+        - "${PGDATABASE}"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
       timeout: 3s
-      retries: 20
+      retries: 3
 
+  # Neo4j graph database
   neo4j:
+    container_name: neo4j
     image: neo4j:5
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
-    ports: ["7474:7474","7687:7687"]
-    volumes: [ "neo4jdata:/data" ]
+    ports:
+      # Web interface at http://localhost:7474/browser/
+      - "7474:7474"
+      # Server at neo4j://localhost:7687
+      - "7687:7687"
+    volumes: 
+      - "neo4jdata:/data"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD","wget","--spider","-q","http://localhost:7474"]
-      interval: 5s
+      test:
+        - "CMD"
+        - "wget"
+        - "-q"
+        - "--spider"
+        - "http://localhost:7474"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
       timeout: 3s
-      retries: 30
+      retries: 3
 
+  # InfluxDB time-series database
   influx:
+    container_name: influx
     image: influxdb:2
-    ports: ["8086:8086"]
+    ports:
+      # InfluxDB web UI at http://localhost:8086
+      # API at http://localhost:8086/api/v2/
+      - "8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USER}
@@ -37,78 +72,131 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG}
       DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET}
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
-    volumes: [ "influxdata:/var/lib/influxdb2" ]
+    volumes:
+      - "influxdata:/var/lib/influxdb2"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD","influx","ping","-h","http://localhost:8086"]
-      interval: 5s
+      test:
+        - "CMD"
+        - "influx"
+        - "ping"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
       timeout: 3s
-      retries: 30
-    networks:
-      default:
-        aliases:
-          - influx.local
+      retries: 3
 
+  # MinIO object storage
   minio:
+    container_name: minio
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-    ports: ["9100:9000","9101:9001"]
-    volumes: [ "miniodata:/data" ]
+    ports:
+      - "9100:9000"
+      # MinIO web console at http://localhost:9101
+      - "9101:9001"
+    volumes: 
+      - "miniodata:/data"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD","curl","-f","http://localhost:9000/minio/health/live"]
-      interval: 5s
+      test:
+        - "CMD"
+        - "curl"
+        - "-fsSLo"
+        - "/dev/null"
+        - "http://localhost:9000/minio/health/live"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
       timeout: 3s
-      retries: 30
-    networks:
-      default:
-        aliases:
-          - minio.local
+      retries: 3
 
+  # MQTT broker
   mqtt:
+    container_name: mqtt
     image: eclipse-mosquitto:2
-    ports: ["1883:1883"]
+    ports:
+      - "1883:1883"
     volumes:
       - ./infrastructure/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-    # Healthcheck removed: base image lacks 'nc'; port is exposed directly
-    networks:
-      default:
-        aliases:
-          - mqtt.local
-
-  simulator:
-    build: ./data-collection/simulator
-    env_file:
-      - ./.env
-    environment:
-      - MQTT_BROKER_HOST=mqtt
-      - MQTT_BROKER_PORT=1883
-      - PGHOST=db
-      - PGPORT=5432
-      - INFLUX_URL=http://influx:8086
-    depends_on:
-      - db
-      - influx
-      - mqtt
     restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "mosquitto_sub"
+        - "-h"
+        - "localhost"
+        - "-p"
+        - "1883"
+        - "-t"
+        - "$$SYS/broker/version"
+        - "-C"
+        - "1"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
+
+  # simulator:
+  #   build: ./data-collection/simulator
+  #   env_file:
+  #     - ./.env
+  #   environment:
+  #     - MQTT_BROKER_HOST=mqtt
+  #     - MQTT_BROKER_PORT=1883
+  #     - PGHOST=db
+  #     - PGPORT=5432
+  #     - INFLUX_URL=http://influx:8086
+  #   depends_on:
+  #     - db
+  #     - influx
+  #     - mqtt
+  #   restart: unless-stopped
+
+  # Web portal (static version)
   portal:
+    container_name: webportal-nginx
     image: nginx:alpine
     volumes:
       - ./ui/portal/html:/usr/share/nginx/html:ro
     ports:
       - "${PORTAL_HOST_PORT:-8080}:80"
     restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "wget"
+        - "-q"
+        - "--spider"
+        - "http://localhost"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
+  # Django backend API
   django:
-    build: ./infrastructure/django
+    container_name: backend-django
+    image: anand-dtp-django:latest
+    build:
+      context: ./infrastructure/django
+      dockerfile: Dockerfile
     environment:
       - DJANGO_DEBUG=1
       - SECRET_KEY=devsecret
       - ALLOWED_HOSTS=*
       - CORS_ORIGINS=http://localhost:8083,http://localhost:8080
-      - PGHOST=db
+      - PGHOST=postgres
       - PGPORT=5432
       - PGUSER=${PGUSER}
       - PGPASSWORD=${PGPASSWORD}
@@ -118,70 +206,105 @@ services:
       - INFLUX_BUCKET=${INFLUX_BUCKET}
       - INFLUX_TOKEN=${INFLUX_TOKEN}
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
-    ports: ["8085:8000"]
+    ports:
+      - "8085:8000"
     volumes:
       - ./twins:/app/twins_repo:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/healthz', timeout=3)\""]
-      interval: 10s
+      test:
+        - "CMD"
+        - "python"
+        - "/app/health.py"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
       timeout: 3s
-      retries: 10
-      start_period: 10s
+      retries: 3
 
+  # Web portal (React version)
   reactui:
+    container_name: webportal-react
+    image: anand-dtp-webportal-react:latest
     build:
       context: ./ui/react
       args:
         # Use same-origin; Nginx proxies /api -> django
         VITE_API_BASE: ""
-    ports: ["8083:80"]
+    ports:
+      # React app at http://localhost:8083
+      - "8083:80"
     links:
       - django
     restart: unless-stopped
     depends_on:
       django:
         condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "wget"
+        - "-q"
+        - "--spider"
+        - "http://localhost"
+      # Quick polling during startup (every 3s), then normal checks (every 30s)
+      start_period: 30s
+      start_interval: 3s
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
+  # Node-RED flow-based programming tool
   node_red:
+    container_name: node_red
     image: nodered/node-red:latest
-    ports: ["1880:1880"]
+    ports:
+      # Node-RED editor at http://localhost:1880
+      - "1880:1880"
     volumes:
       - "nodereddata:/data"
       - "./services/node-red/library:/data/lib/flows"
     restart: unless-stopped
-    networks:
-      default:
-        aliases:
-          - nodered.local
 
-  alert_gateway:
-    build: ./data-collection/alert_gateway
-    environment:
-      - MQTT_BROKER_HOST=mqtt.local
-      - MQTT_BROKER_PORT=1883
-      - MQTT_ALERT_TOPIC=dtp/lift/alerts
-      - CENTRAL_INFLUX_URL=http://influx.local:8086
-      - INFLUX_ORG=${INFLUX_ORG}
-      - INFLUX_BUCKET=${INFLUX_BUCKET}
-      - INFLUX_TOKEN=${INFLUX_TOKEN}
-      - REGISTRY_URL=http://django:8000/api/registry/public/twins
-      - TENANT=demo
-    depends_on:
-      - mqtt
-      - influx
-    restart: unless-stopped
+  # alert_gateway:
+  #   build: ./data-collection/alert_gateway
+  #   environment:
+  #     - MQTT_BROKER_HOST=mqtt.local
+  #     - MQTT_BROKER_PORT=1883
+  #     - MQTT_ALERT_TOPIC=dtp/lift/alerts
+  #     - CENTRAL_INFLUX_URL=http://influx.local:8086
+  #     - INFLUX_ORG=${INFLUX_ORG}
+  #     - INFLUX_BUCKET=${INFLUX_BUCKET}
+  #     - INFLUX_TOKEN=${INFLUX_TOKEN}
+  #     - REGISTRY_URL=http://django:8000/api/registry/public/twins
+  #     - TENANT=demo
+  #   depends_on:
+  #     - mqtt
+  #     - influx
+  #   restart: unless-stopped
 
+  # Runner container for executing one-off scripts, e.g., tests
+  # Use with: docker compose run --rm runner python /app/your_script.py
   runner:
-    image: python:3.11
+    container_name: script-runner
+    image: python:3.11-trixie
+    profiles:
+      # Prevent automatic startup with 'docker compose up'
+      - one-off
     working_dir: /app
     volumes:
       - ./scripts:/app
     env_file:
       - ./.env
-    # no command/entrypoint; use `docker compose run` to execute tests
+
+networks:
+  default:
+    name: anand-dtp-network
+    driver: bridge
+    attachable: true
 
 volumes:
   dbdata:
@@ -189,4 +312,3 @@ volumes:
   influxdata:
   miniodata:
   nodereddata:
-
